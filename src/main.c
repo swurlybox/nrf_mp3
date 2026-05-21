@@ -5,7 +5,7 @@
 
 #include "buttons_and_leds/lbs.h"
 
-#define SLEEP_TIME_MS 100
+#define SLEEP_TIME_MS 1000
 
 /* Do any hardware/software initializations or checks within this function. */
 int setup(void) {
@@ -22,17 +22,8 @@ int main(void)
         return -1;
     }
 
-    bool button_state;
     while (1) {
-        /* We're essentially polling the state of the button,
-            then setting the LED state accordingly on a SLEEP_TIME_MS
-            interval. */
-        button_state = gpio_pin_get_dt(&button0);
-        gpio_pin_set_dt(&led0, button_state);
-
-        button_state = gpio_pin_get_dt(&ext_button0);
-        gpio_pin_set_dt(&ext_led0, button_state);
-
+        gpio_pin_toggle_dt(&status_led0);        
         k_msleep(SLEEP_TIME_MS);
     }
 }
