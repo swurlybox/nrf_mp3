@@ -1,0 +1,39 @@
+
+&i2c0 {
+	status = "disabled";
+};
+
+&spi1 {
+	status = "disabled";
+};
+
+&spi3 {
+	status = "disabled";
+};
+
+&pwm0 {
+	status = "disabled";
+};
+
+/ {
+	leds {
+		compatible = "gpio-leds";
+		ext_led0: ext_led0 {
+			label = "External Red LED";
+			gpios = <&gpio0 3 (GPIO_ACTIVE_LOW)>;
+		};
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+		ext_button0: ext_button0 {
+			label = "Button to switch the red LED.";
+			gpios = <&gpio0 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+		};
+	};
+
+	aliases {
+		ext-led0 = &ext_led0;
+		ext-button0 = &ext_button0;
+	};
+};
