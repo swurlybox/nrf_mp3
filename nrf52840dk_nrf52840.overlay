@@ -17,15 +17,54 @@
 
 / {
 
+	/delete-node/ buttons;
+
 	buttons {
 		compatible = "gpio-keys";
 		ext_button0: ext_button0 {
-			label = "Button to switch the red LED.";
+			label = "Up button";
 			gpios = <&gpio0 3 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			zephyr,code = < INPUT_KEY_UP >;
 		};
+		ext_button1: ext_button1 {
+			label = "Left button";
+			gpios = <&gpio0 4 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			zephyr,code = < INPUT_KEY_LEFT >;
+		};
+		ext_button2: ext_button2 {
+			label = "Down button";
+			gpios = <&gpio0 28 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			zephyr,code = < INPUT_KEY_DOWN >;
+		};
+		ext_button3: ext_button3 {
+			label = "Right button";
+			gpios = <&gpio0 29 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			zephyr,code = < INPUT_KEY_RIGHT >;
+		};
+		ext_button4: ext_button4 {
+			label = "Select button";
+			gpios = <&gpio0 30 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			zephyr,code = < INPUT_KEY_ENTER >;
+		};
+		ext_button5: ext_button5 {
+			label = "Cancel button";
+			gpios = <&gpio0 31 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+			zephyr,code = < INPUT_KEY_BACK >;
+		};
+		
 	};
 
 	aliases {
 		ext-button0 = &ext_button0;
+		ext-button1 = &ext_button1;
+		ext-button2 = &ext_button2;
+		ext-button3 = &ext_button3;
+		ext-button4 = &ext_button4;
+		ext-button5 = &ext_button5;
+		/delete-property/ mcuboot-button0;
+		/delete-property/ sw0;
+		/delete-property/ sw1;
+		/delete-property/ sw2;
+		/delete-property/ sw3;
 	};
 };

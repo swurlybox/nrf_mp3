@@ -1,61 +1,91 @@
 #include "lbs.h"
-
-#define EB0_NODE    DT_ALIAS(ext_button0)
-const struct gpio_dt_spec ext_button0 = GPIO_DT_SPEC_GET(EB0_NODE, gpios);
-
-#define SW0_NODE    DT_ALIAS(sw0)
-const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET(SW0_NODE, gpios);
+#include <zephyr/input/input.h>
 
 #define LED0_NODE   DT_ALIAS(led0)
+#define LED1_NODE   DT_ALIAS(led1)
+#define LED2_NODE   DT_ALIAS(led2)
+#define LED3_NODE   DT_ALIAS(led3)
+
 const struct gpio_dt_spec status_led0 = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
+const struct gpio_dt_spec led1 = GPIO_DT_SPEC_GET(LED1_NODE, gpios);
+const struct gpio_dt_spec led2 = GPIO_DT_SPEC_GET(LED2_NODE, gpios);
+const struct gpio_dt_spec led3 = GPIO_DT_SPEC_GET(LED3_NODE, gpios);
 
-/* Responsible for hooking up callbacks, later passed into a function to
-    register the callbacks to a particular button. */
-static struct gpio_callback button0_cb_data;
-static struct gpio_callback ext_button0_cb_data;
+static void btn_df_hdlr() { printk("No useful callback attached\n"); }
 
-void button0_pressed_print(const struct device *dev, struct gpio_callback *cb, 
-    uint32_t pins) {
-    printk("Button pressed\n");
+/* See DeviceTree to see which buttons are mapped to which keycode. */
+button_cb button_arr[BUTTON_ARR_SIZE] = {
+    {INPUT_KEY_UP,      btn_df_hdlr, btn_df_hdlr},  
+    {INPUT_KEY_LEFT,    btn_df_hdlr, btn_df_hdlr},
+    {INPUT_KEY_DOWN,    btn_df_hdlr, btn_df_hdlr},
+    {INPUT_KEY_RIGHT,   btn_df_hdlr, btn_df_hdlr},
+    {INPUT_KEY_ENTER,   btn_df_hdlr, btn_df_hdlr},
+    {INPUT_KEY_BACK,    btn_df_hdlr, btn_df_hdlr}
+};
+
+/* Button arbitrator */
+static void button_input_cb(struct input_event *evt, void *user_data) {
+	if (evt->sync == 0) { return; }
+
+    printk("Button %d %s\n", evt->code, evt->value ? "pressed" : "released");
+    for (int i = 0; i < BUTTON_ARR_SIZE; i++) {
+        if (button_arr[i].code == evt->code) {
+            evt->value ? button_arr[i].press(): button_arr[i].release();
+            return;
+        }
+    }
+    printk("Unsupported code: %d\n", evt->code);
 }
 
-void button0_pressed_nothing(const struct device *dev, struct gpio_callback *cb,
-    uint32_t pins) {
-    printk("Nothing!\n");
-}
-
-void ext_button0_pressed(const struct device *dev, struct gpio_callback *cb,
-    uint32_t pins) {
-    gpio_init_callback(&button0_cb_data, button0_pressed_nothing, BIT(button0.pin));
-    printk("Changed button0's callback!\n");
-}
+INPUT_CALLBACK_DEFINE(NULL, button_input_cb, NULL);
 
 int lbs_check(void) {
     /* Check gpio0 is ready. Checks on devices on the same port are redundant. */
     if (!device_is_ready(status_led0.port)) {
+        printk("error: lbs_check(): gpio port 0 not ready\n");
         return -1;
     }
 
-    /* Configure buttons and leds. */
-    if (gpio_pin_configure_dt(&status_led0, GPIO_OUTPUT_ACTIVE) ||
-        gpio_pin_configure_dt(&button0, GPIO_INPUT) ||
-        gpio_pin_configure_dt(&ext_button0, GPIO_INPUT)) {
+    /* Configure buttons and leds for input or output. */
+    if (gpio_pin_configure_dt(&status_led0, GPIO_OUTPUT_INACTIVE)    ||
+        gpio_pin_configure_dt(&led1, GPIO_OUTPUT_INACTIVE)           ||
+        gpio_pin_configure_dt(&led2, GPIO_OUTPUT_INACTIVE)           ||
+        gpio_pin_configure_dt(&led3, GPIO_OUTPUT_INACTIVE)) {
+        printk("error: lbs_check(): gpio i/o mode configure failed\n");
         return -1;    
     }
 
-    /* Interrupts */
-    if (gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_TO_ACTIVE)) {
-        return -1;
-    }
-    gpio_init_callback(&button0_cb_data, button0_pressed_print, BIT(button0.pin));
-    gpio_add_callback(button0.port, &button0_cb_data);   // as many as we want
-
-    /* On external button press, we change the callback in the cb_data structure */
-    if (gpio_pin_interrupt_configure_dt(&ext_button0, GPIO_INT_EDGE_TO_ACTIVE)) {
-        return -1;
-    }
-    gpio_init_callback(&ext_button0_cb_data, ext_button0_pressed, BIT(ext_button0.pin));
-    gpio_add_callback(ext_button0.port, &ext_button0_cb_data);
-    
+    printk("lbs_check(): success\n");
     return 0;
+}
+
+void button_cb_reset_all(void) {
+    for (int i = 0; i < BUTTON_ARR_SIZE; i++) {
+        button_arr[i].press = btn_df_hdlr;
+        button_arr[i].release = btn_df_hdlr;
+    }
+    printk("reset all button callbacks\n");
+}
+
+/* Little inefficient to have to loop through the button array and examine
+    their code to determine which button we're looking for. But this is fine
+    since these functions are not expected to be executed very frequently. */
+void button_press_attach(uint16_t code, void (*press)(void)) {
+    for (int i = 0; i < BUTTON_ARR_SIZE; i++) {
+        if (button_arr[i].code == code) {
+            button_arr[i].press = press;
+            return;
+        }
+    }
+    printk("couldn't find button to attach: %d\n", code);
+}
+
+void button_release_attach(uint16_t code, void (*release)(void)) {
+    for (int i = 0; i < BUTTON_ARR_SIZE; i++) {
+        if (button_arr[i].code == code) {
+            button_arr[i].release = release;
+            return;
+        }
+    }
+    printk("couldn't find button to attach: %d\n", code);
 }
