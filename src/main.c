@@ -15,14 +15,6 @@ int setup(void) {
     return 0;
 }
 
-void test_callback() {
-    printk("test callback invoked\n");
-}
-
-void custom_reset() {
-    button_cb_reset_all();
-}
-
 int main(void)
 {
     if(setup()) {
