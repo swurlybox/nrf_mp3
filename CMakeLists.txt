@@ -11,4 +11,5 @@ project(nrf_mp3)
 target_sources(app PRIVATE 
     src/main.c
     src/buttons_and_leds/lbs.c
+    src/states/fs_nav.c
 )
