@@ -12,4 +12,5 @@ target_sources(app PRIVATE
     src/main.c
     src/buttons_and_leds/lbs.c
     src/states/fs_nav.c
+    src/states/bt_menu.c
 )

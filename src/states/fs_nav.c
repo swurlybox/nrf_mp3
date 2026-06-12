@@ -1,5 +1,6 @@
 #include "fs_nav.h"
 #include "../buttons_and_leds/lbs.h"
+#include "bt_menu.h"
 
 #include <zephyr/logging/log.h>
 #include <zephyr/fs/fs.h>   /* Zephyr's generic filesystem API */
@@ -60,32 +61,28 @@ int fs_check(void) {
             printk("Error remounting disk.\n");
             return res;
         }
-
-        if (lsdir("/") < 0) {
-            printk("Error mounting disk.\n");
-        }
     }
 
-    /* Run a couple of tests: test chdir */
-    printk("test1\n");
-    chdir("..");    /* should still be at root fs */
-    lsdir(ff_nav_t.cwd);
+    // /* Run a couple of tests: test chdir */
+    // printk("test1\n");
+    // chdir("..");    /* should still be at root fs */
+    // lsdir(ff_nav_t.cwd);
     
-    printk("test2\n");
-    chdir("testdir");
-    lsdir(ff_nav_t.cwd);
+    // printk("test2\n");
+    // chdir("testdir");
+    // lsdir(ff_nav_t.cwd);
 
-    printk("test3\n");
-    chdir("testsubdir");
-    lsdir(ff_nav_t.cwd);
+    // printk("test3\n");
+    // chdir("testsubdir");
+    // lsdir(ff_nav_t.cwd);
 
-    printk("test4\n");
-    chdir(".");
-    lsdir(ff_nav_t.cwd);
+    // printk("test4\n");
+    // chdir(".");
+    // lsdir(ff_nav_t.cwd);
 
-    printk("test5\n");
-    chdir("../../..");
-    lsdir(ff_nav_t.cwd);
+    // printk("test5\n");
+    // chdir("../../..");
+    // lsdir(ff_nav_t.cwd);
 
     return res;
 }
@@ -99,6 +96,7 @@ void fs_enter(void) {
     button_release_attach(INPUT_KEY_RIGHT, right);
     button_release_attach(INPUT_KEY_ENTER, select);
     button_release_attach(INPUT_KEY_BACK, cancel);
+    lsdir(ff_nav_t.cwd);
 }
 
 /* NOTE: supports ., .., absolute and relative pathing */
@@ -300,8 +298,10 @@ static void cancel(void) {
 }
 
 static void left(void) {
-    /* Should transition into some sort of config menu. */
-    printk("Left pressed\n");
+    /* Should transition into some sort of config menu. ff_nav state is 
+        preserved and should return back to the cwd on next transition back. */
+    printk("Enter Bluetooth submenu\n");
+    bt_menu_enter();
 }
 
 static void right(void) {
