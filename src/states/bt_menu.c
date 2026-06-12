@@ -2,6 +2,8 @@
 #include "../buttons_and_leds/lbs.h"
 #include "fs_nav.h"
 
+#include <zephyr/bluetooth/bluetooth.h>
+
 /* BT main menu ------------------------------------------------------------ */
 /* BT Menu will define a couple of options for BT configuration:
 
@@ -154,11 +156,29 @@ static void right(void) {
 }
 
 static void select(void) {
+    int err;
     /* Behavior changes depending on which option is selected */
     switch (bt_menu.index) {
         case 0:
             /* Enable or disable bluetooth */
-            printk("Option 0\n");
+            if (bt_menu.status & BT_ENABLED) {
+                err = bt_disable();
+                if (err) {
+                    printk("Failed to disable bluetooth\n");
+                } else {
+                    printk("Bluetooth disabled\n");
+                    bt_menu.status ^= BT_ENABLED;
+                }
+            } else {
+                err = bt_enable(NULL);
+                if (err) {
+                    printk("Failed to enable bluetooth\n");
+                } else {
+                    printk("Bluetooth enabled\n");
+                    bt_menu.status ^= BT_ENABLED;
+                }
+            }
+            print_menu();
             break;
         case 1:
             /* Scanning option */

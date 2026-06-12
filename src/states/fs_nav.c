@@ -63,27 +63,6 @@ int fs_check(void) {
         }
     }
 
-    // /* Run a couple of tests: test chdir */
-    // printk("test1\n");
-    // chdir("..");    /* should still be at root fs */
-    // lsdir(ff_nav_t.cwd);
-    
-    // printk("test2\n");
-    // chdir("testdir");
-    // lsdir(ff_nav_t.cwd);
-
-    // printk("test3\n");
-    // chdir("testsubdir");
-    // lsdir(ff_nav_t.cwd);
-
-    // printk("test4\n");
-    // chdir(".");
-    // lsdir(ff_nav_t.cwd);
-
-    // printk("test5\n");
-    // chdir("../../..");
-    // lsdir(ff_nav_t.cwd);
-
     return res;
 }
 
@@ -298,9 +277,6 @@ static void cancel(void) {
 }
 
 static void left(void) {
-    /* Should transition into some sort of config menu. ff_nav state is 
-        preserved and should return back to the cwd on next transition back. */
-    printk("Enter Bluetooth submenu\n");
     bt_menu_enter();
 }
 
