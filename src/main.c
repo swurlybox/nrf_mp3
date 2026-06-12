@@ -3,6 +3,7 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
 
+/* Custom library includes */
 #include "states/fs_nav.h"
 #include "buttons_and_leds/lbs.h"
 
@@ -21,10 +22,13 @@ int setup(void) {
 
 int main(void)
 {
+    int err;
     if(setup()) {
         printk("error: setup(): device initialization\n");
         return -1;
     }
+
+    fs_enter();
 
     while (1) {
         gpio_pin_toggle_dt(&status_led0);        

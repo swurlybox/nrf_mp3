@@ -1,4 +1,5 @@
 #include "fs_nav.h"
+#include "../buttons_and_leds/lbs.h"
 
 #include <zephyr/logging/log.h>
 #include <zephyr/fs/fs.h>   /* Zephyr's generic filesystem API */
@@ -11,8 +12,6 @@
 #define MAX_PATH 128
 #define FS_RET_OK FR_OK
 #define CWD_SIZE 512
-
-LOG_MODULE_REGISTER(fs_nav);
 
 /* Filesystem setup */
 static FATFS fat_fs;        /* elm fatfs structure */
@@ -43,6 +42,8 @@ static void cycle_up(void);
 static void cycle_down(void);
 static void select(void);
 static void cancel(void);
+static void left(void);
+static void right(void);
 
 int fs_check(void) {
     int res = fs_mount(&mp);
@@ -65,28 +66,23 @@ int fs_check(void) {
         }
     }
 
-    /* Test chdir */
-    k_msleep(1000);
+    /* Run a couple of tests: test chdir */
     printk("test1\n");
     chdir("..");    /* should still be at root fs */
     lsdir(ff_nav_t.cwd);
-
-    k_msleep(1000);
+    
     printk("test2\n");
     chdir("testdir");
     lsdir(ff_nav_t.cwd);
 
-    k_msleep(1000);
     printk("test3\n");
     chdir("testsubdir");
     lsdir(ff_nav_t.cwd);
 
-    k_msleep(1000);
     printk("test4\n");
     chdir(".");
     lsdir(ff_nav_t.cwd);
 
-    k_msleep(1000);
     printk("test5\n");
     chdir("../../..");
     lsdir(ff_nav_t.cwd);
@@ -94,7 +90,18 @@ int fs_check(void) {
     return res;
 }
 
-/* TODO: Add support for .., ., and relative pathing. */
+void fs_enter(void) {
+    /* Hook up buttons to their callbacks. */
+    button_cb_reset_all();
+    button_release_attach(INPUT_KEY_UP, cycle_up);
+    button_release_attach(INPUT_KEY_LEFT, left);
+    button_release_attach(INPUT_KEY_DOWN, cycle_down);
+    button_release_attach(INPUT_KEY_RIGHT, right);
+    button_release_attach(INPUT_KEY_ENTER, select);
+    button_release_attach(INPUT_KEY_BACK, cancel);
+}
+
+/* NOTE: supports ., .., absolute and relative pathing */
 static void chdir(const char *path) {
     int res;
     struct fs_dir_t dirp;
@@ -199,6 +206,13 @@ static int lsdir(const char *path) {
             break;
         }
 
+        /* Draw index pointer */
+        if (count == ff_nav_t.index) {
+            printk("> ");
+        } else {
+            printk("  ");
+        }
+
         if (entry.type == FS_DIR_ENTRY_DIR) {
             printk("[DIR ] %s\n", entry.name);
         } else {
@@ -206,6 +220,8 @@ static int lsdir(const char *path) {
         }
         count++;
     }
+
+    ff_nav_t.dirent_count = count;
 
     /* Verify fs_closedir() */
     res = fs_closedir(&dirp);
@@ -235,7 +251,59 @@ static void cycle_down(void) {
     lsdir(ff_nav_t.cwd);
 }
 
+static void select(void) {
+    /* Open the cwd directory */
+    int res;
+    struct fs_dir_t dirp;
+    static struct fs_dirent entry;
+    int count = 0;
+    char temp_path[CWD_SIZE] = {0};
+
+    strcat(temp_path, DISK_MOUNT_PT);
+    strcat(temp_path, ff_nav_t.cwd);
+
+    fs_dir_t_init(&dirp);
+    res = fs_opendir(&dirp, temp_path);
+    /* Readdir until we arrive at the selected index */
+    if (res) {
+        printk("Error opening dir %s [%d]\n", ff_nav_t.cwd, res);
+        return;
+    }
+
+    for (;;) {
+        /* Verify fs_readdir() */
+        res = fs_readdir(&dirp, &entry);
+        if (res || entry.name[0] == 0) {
+            break;
+        }
+        if (count == ff_nav_t.index) {
+            break;
+        }
+        count++;
+    }
+    fs_closedir(&dirp);
+
+    /* If its a directory, attempt a chdir */
+    if (entry.type == FS_DIR_ENTRY_DIR) {
+        chdir(entry.name);
+        lsdir(ff_nav_t.cwd);
+    } else {
+        printk("[FILE] %s (size: %zu)\n", entry.name, entry.size);
+    }
+}
+
 static void cancel(void) {
-    /* Go to parent directory. */
-    /* Zephyr's FS API lacks a notion of CWD and CHDIR? */
+    chdir("..");
+    ff_nav_t.index = 0;
+    ff_nav_t.dirent_count = 0;
+    lsdir(ff_nav_t.cwd);
+}
+
+static void left(void) {
+    /* Should transition into some sort of config menu. */
+    printk("Left pressed\n");
+}
+
+static void right(void) {
+    printk("Right pressed\n");
 }

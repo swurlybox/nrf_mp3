@@ -11,7 +11,9 @@ const struct gpio_dt_spec led1 = GPIO_DT_SPEC_GET(LED1_NODE, gpios);
 const struct gpio_dt_spec led2 = GPIO_DT_SPEC_GET(LED2_NODE, gpios);
 const struct gpio_dt_spec led3 = GPIO_DT_SPEC_GET(LED3_NODE, gpios);
 
-static void btn_df_hdlr() { printk("No useful callback attached\n"); }
+static void btn_df_hdlr() { 
+    (void) 0;
+}
 
 /* See DeviceTree to see which buttons are mapped to which keycode. */
 button_cb button_arr[BUTTON_ARR_SIZE] = {
@@ -27,7 +29,6 @@ button_cb button_arr[BUTTON_ARR_SIZE] = {
 static void button_input_cb(struct input_event *evt, void *user_data) {
 	if (evt->sync == 0) { return; }
 
-    printk("Button %d %s\n", evt->code, evt->value ? "pressed" : "released");
     for (int i = 0; i < BUTTON_ARR_SIZE; i++) {
         if (button_arr[i].code == evt->code) {
             evt->value ? button_arr[i].press(): button_arr[i].release();
@@ -42,7 +43,7 @@ INPUT_CALLBACK_DEFINE(NULL, button_input_cb, NULL);
 int lbs_check(void) {
     /* Check gpio0 is ready. Checks on devices on the same port are redundant. */
     if (!device_is_ready(status_led0.port)) {
-        printk("error: lbs_check(): gpio port 0 not ready\n");
+        printk("lbs_check(): gpio port 0 not ready\n");
         return -1;
     }
 
@@ -64,7 +65,7 @@ void button_cb_reset_all(void) {
         button_arr[i].press = btn_df_hdlr;
         button_arr[i].release = btn_df_hdlr;
     }
-    printk("reset all button callbacks\n");
+    printk("All button callbacks have been reset.\n");
 }
 
 /* Little inefficient to have to loop through the button array and examine
@@ -77,7 +78,7 @@ void button_press_attach(uint16_t code, void (*press)(void)) {
             return;
         }
     }
-    printk("couldn't find button to attach: %d\n", code);
+    printk("Couldn't find button to attach: %d\n", code);
 }
 
 void button_release_attach(uint16_t code, void (*release)(void)) {
@@ -87,5 +88,5 @@ void button_release_attach(uint16_t code, void (*release)(void)) {
             return;
         }
     }
-    printk("couldn't find button to attach: %d\n", code);
+    printk("Couldn't find button to attach: %d\n", code);
 }
