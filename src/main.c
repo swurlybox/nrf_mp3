@@ -22,7 +22,6 @@ int setup(void) {
 
 int main(void)
 {
-    int err;
     if(setup()) {
         printk("error: setup(): device initialization\n");
         return -1;

@@ -66,6 +66,9 @@ static void sl_right(void);
 static void sl_select(void);
 static void sl_cancel(void);
 
+static void device_found(const bt_addr_le_t *addr, int8_t rssi, 
+    uint8_t adv_type, struct net_buf_simple *buf);
+
 /* Implementation ---------------------------------------------------------- */
 
 /* BT main menu ------------------------------------------------------------ */
@@ -182,7 +185,24 @@ static void select(void) {
             break;
         case 1:
             /* Scanning option */
-            printk("Option 1\n");
+            if (bt_menu.status & BT_SCANNING) {
+                err = bt_le_scan_stop();
+                if (err) {
+                    printk("Failed to stop BT scanning\n");
+                } else {
+                    printk("BT stop scanning\n");
+                    bt_menu.status ^= BT_SCANNING;
+                }
+            } else {
+                err = bt_le_scan_start(BT_LE_SCAN_PASSIVE, device_found);
+                if (err) {
+                    printk("Failed to start BT scanning\n");
+                } else {
+                    printk("BT start scanning\n");
+                    bt_menu.status ^= BT_SCANNING;
+                }
+            }
+            print_menu();   /* Scanning will be done in the background. */
             break;
         case 2:
             /* Connect or disconnect */
@@ -260,4 +280,26 @@ static void sl_select() {
 
 static void sl_cancel() {
     bt_menu_enter();
+}
+
+static void device_found(const bt_addr_le_t *addr, int8_t rssi, 
+    uint8_t adv_type, struct net_buf_simple *buf) {
+    char bt_addr_le_str[BT_ADDR_LE_STR_LEN];
+    bt_addr_le_to_str(addr, bt_addr_le_str, BT_ADDR_LE_STR_LEN);
+
+    /* The device must be connectable. */
+    if (!(adv_type & BT_GAP_ADV_TYPE_ADV_IND || 
+        adv_type & BT_GAP_ADV_TYPE_ADV_DIRECT_IND)) {
+        printk("Non-connectable: %s, rssi: %d\n", bt_addr_le_str, rssi);
+        return;
+    }
+
+    /* Filter out rssi < -50 */
+    if (rssi < -50) {
+        printk("Out-of-preferred range (<-50): %s, rssi: %d\n", bt_addr_le_str,
+            rssi);
+        return;
+    }
+
+    printk("Found device: %s, rssi: %d\n", bt_addr_le_str, rssi);
 }
