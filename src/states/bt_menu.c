@@ -46,15 +46,11 @@ static void cancel(void);
 
 typedef struct sl_menu_t {
     int index;                  /* currently selected index in the list */
-    int size;                   /* number of scanned connections*/
-    char arr[MAX_SCAN_LIST];    /* TODO: change to an array of bt-addresses. */
+    int size;                   /* number of scanned connections */
+    bt_addr_le_t arr[MAX_SCAN_LIST];    /* TODO: change to an array of bt-addresses. */
 } sl_menu_t;
 
-sl_menu_t sl_menu = {
-    .index = 0,
-    .size = 0,
-    .arr = "Hello mom"
-};
+sl_menu_t sl_menu = { 0 };
 
 static void sl_enter(void);
 static void sl_print(void);
@@ -194,7 +190,8 @@ static void select(void) {
                     bt_menu.status ^= BT_SCANNING;
                 }
             } else {
-                err = bt_le_scan_start(BT_LE_SCAN_PASSIVE, device_found);
+                sl_menu.size = 0;
+                err = bt_le_scan_start(BT_LE_SCAN_ACTIVE, device_found);
                 if (err) {
                     printk("Failed to start BT scanning\n");
                 } else {
@@ -232,19 +229,24 @@ static void sl_enter(void) {
     button_release_attach(INPUT_KEY_RIGHT, sl_right);
     button_release_attach(INPUT_KEY_ENTER, sl_select);
     button_release_attach(INPUT_KEY_BACK, sl_cancel);
-    /* temporarily set the size to match, changed by bt-scan thread */
-    sl_menu.size = 10;
     sl_print();
 }
 
 static void sl_print(void) {
+    if (sl_menu.size == 0) {
+        printk("No connections available, please go back and scan\n");
+        return;
+    }
+    printk("\n");
+    char bt_addr_le_str[BT_ADDR_LE_STR_LEN];
     for (int i = 0; i < sl_menu.size; i++) {
         if (i == sl_menu.index) {
             printk("> ");
         } else {
             printk("  ");
         }
-        printk("Option %d: %c\n", i, sl_menu.arr[i]);
+        bt_addr_le_to_str(&sl_menu.arr[i], bt_addr_le_str, BT_ADDR_LE_STR_LEN);
+        printk("Option %d: %s\n", i, bt_addr_le_str);
     }
 }
 
@@ -288,18 +290,39 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi,
     bt_addr_le_to_str(addr, bt_addr_le_str, BT_ADDR_LE_STR_LEN);
 
     /* The device must be connectable. */
-    if (!(adv_type & BT_GAP_ADV_TYPE_ADV_IND || 
-        adv_type & BT_GAP_ADV_TYPE_ADV_DIRECT_IND)) {
-        printk("Non-connectable: %s, rssi: %d\n", bt_addr_le_str, rssi);
+    if (!(adv_type == BT_GAP_ADV_TYPE_ADV_IND || 
+        adv_type == BT_GAP_ADV_TYPE_ADV_DIRECT_IND ||
+        adv_type == BT_GAP_ADV_TYPE_EXT_ADV)) {
+        // printk("Non-connectable: %s, rssi: %d\n", bt_addr_le_str, rssi);
         return;
     }
 
     /* Filter out rssi < -50 */
     if (rssi < -50) {
-        printk("Out-of-preferred range (<-50): %s, rssi: %d\n", bt_addr_le_str,
-            rssi);
+        // printk("Out-of-preferred range (<-50): %s, rssi: %d\n", bt_addr_le_str,
+        //     rssi);
         return;
     }
 
-    printk("Found device: %s, rssi: %d\n", bt_addr_le_str, rssi);
+    if (sl_menu.size >= MAX_SCAN_LIST) {
+        // printk("Hit max scan list\n");
+        return;
+    }
+
+    /* NOTE: May need a mutex here if the bluetooth thread generates multiple
+        threads that affect this shared resource. Check for any existing duplicates */
+    for (int i = 0; i < sl_menu.size; i++) {
+        if (bt_addr_le_cmp(&sl_menu.arr[i], addr) == 0) {
+            // printk("Found duplicate entry: %s, rssi: %d\n", bt_addr_le_str, 
+            //     rssi);
+            return;
+        }
+    }
+    
+    /* TODO: For some reason, bluetooth hardware is not picking up LE Audio
+        earbuds. */
+    printk("Found device, adding to list: %s, rssi: %d\n", bt_addr_le_str, 
+        rssi);
+
+    memcpy(&sl_menu.arr[sl_menu.size++], addr, sizeof(*addr));
 }
