@@ -3,6 +3,7 @@
 #include "fs_nav.h"
 
 #include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
 
 /* BT main menu ------------------------------------------------------------ */
 /* BT Menu will define a couple of options for BT configuration:
@@ -29,6 +30,8 @@ bt_menu_t bt_menu = {
     .size = NUM_BT_OPTIONS,
     .status = 0U
 };
+
+static struct bt_conn *conn;
 
 /* Prints the menu to the UART terminal */
 static void print_menu(void);
@@ -203,8 +206,13 @@ static void select(void) {
             break;
         case 2:
             /* Connect or disconnect */
-            printk("Option 2\n");
-            sl_enter();
+            if (bt_menu.status & BT_CONNECTED) {
+                bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+                bt_menu.status ^= BT_CONNECTED; 
+                print_menu();
+            } else {
+                sl_enter();
+            }
             break;
         case 3:
             /* Print status */
@@ -278,6 +286,32 @@ static void sl_right() {
 
 static void sl_select() {
     printk("Selected\n");
+    int err;
+    char bt_addr_le_str[BT_ADDR_LE_STR_LEN];
+
+    if (sl_menu.index >= sl_menu.size) {
+        printk("Index inconsistent with array size\n");
+        return;
+    }
+
+    /* Grab the selected ble address from the scan list. */
+    bt_addr_le_t *addr = &sl_menu.arr[sl_menu.index];
+    bt_addr_le_to_str(addr, bt_addr_le_str, BT_ADDR_LE_STR_LEN);
+
+    /* Attempt to establish a connection with the chosen ble address from
+        the scan list. This seems to error if we've already connected before. */
+    err = bt_conn_le_create(addr, BT_CONN_LE_CREATE_CONN,
+        BT_LE_CONN_PARAM_DEFAULT, &conn);
+
+    if (err) {
+        printk("Unable to establish BLE connection: %s (%d)\n",
+            bt_addr_le_str, err);
+        return;
+    }
+
+    printk("Connection established: %s\n", bt_addr_le_str);
+    bt_menu.status ^= BT_CONNECTED; 
+    bt_menu_enter();
 }
 
 static void sl_cancel() {
@@ -309,8 +343,6 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi,
         return;
     }
 
-    /* NOTE: May need a mutex here if the bluetooth thread generates multiple
-        threads that affect this shared resource. Check for any existing duplicates */
     for (int i = 0; i < sl_menu.size; i++) {
         if (bt_addr_le_cmp(&sl_menu.arr[i], addr) == 0) {
             // printk("Found duplicate entry: %s, rssi: %d\n", bt_addr_le_str, 
@@ -319,10 +351,37 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi,
         }
     }
     
-    /* TODO: For some reason, bluetooth hardware is not picking up LE Audio
-        earbuds. */
     printk("Found device, adding to list: %s, rssi: %d\n", bt_addr_le_str, 
         rssi);
 
     memcpy(&sl_menu.arr[sl_menu.size++], addr, sizeof(*addr));
 }
+
+/* Bluetooth Connection Callbacks ------------------------------------------ */
+
+static void connected(struct bt_conn *conn, uint8_t err)
+{
+	if (err) {
+		printk("Connection callback: failed to connect\n");
+		bt_conn_unref(conn);
+		return;
+    }
+	printk("Connection callback: Connected\n");
+	// bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+}
+
+static void disconnected(struct bt_conn *i_conn, uint8_t reason)
+{
+
+	// printk("Disconnected: %s, reason 0x%02x %s\n", bt_conn_dst_str(conn),
+	//        reason, bt_hci_err_to_str(reason));
+    printk("Disconnected\n");
+    /* Do we need to set conn to NULL? */
+    bt_conn_unref(i_conn);
+    conn = NULL;
+}
+
+BT_CONN_CB_DEFINE(conn_callbacks) = {
+	.connected = connected,
+	.disconnected = disconnected,
+};
