@@ -4,6 +4,9 @@
 
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/gatt.h>  // for GATT discover 
+#include <zephyr/bluetooth/uuid.h>  // for UUID helpers
+#include <zephyr/bluetooth/hci.h>
 
 /* BT main menu ------------------------------------------------------------ */
 /* BT Menu will define a couple of options for BT configuration:
@@ -30,6 +33,8 @@ bt_menu_t bt_menu = {
     .size = NUM_BT_OPTIONS,
     .status = 0U
 };
+
+K_SEM_DEFINE(alter_conn, 0, 1);
 
 static struct bt_conn *conn;
 
@@ -81,6 +86,76 @@ void bt_menu_enter() {
     button_release_attach(INPUT_KEY_ENTER, select);
     button_release_attach(INPUT_KEY_BACK, cancel);
     print_menu();
+}
+
+static uint8_t discover_cb(struct bt_conn *conn, 
+    const struct bt_gatt_attr *attr, struct bt_gatt_discover_params *params) {
+    if (attr == NULL) {
+        printk("Discovery complete\n");
+        return BT_GATT_ITER_STOP;
+    }
+
+    /* 64 characters should be long enough for a uuid? */
+    char uuid_str[64];
+
+    /* Just print the value of the attr->uuid */
+    bt_uuid_to_str(attr->uuid, uuid_str, 64);
+
+    printk("UUID: %s, attr_handle: %d\n", uuid_str, 
+        bt_gatt_attr_get_handle(attr));
+
+    return BT_GATT_ITER_CONTINUE;
+};
+
+/* Zephyr's documentation is shit at explaining what needs to be set. Only found
+    this out through a blog post someone wrote on Zephyr Centrals. */
+static struct bt_gatt_discover_params discover_params = {
+    .uuid = NULL,   /* set to null, all attributes will be discovered */
+    .func = discover_cb,
+    .start_handle = BT_ATT_FIRST_ATTRIBUTE_HANDLE,
+    .end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE,
+    .type = BT_GATT_DISCOVER_PRIMARY
+};
+
+static uint8_t read_cb(struct bt_conn *conn, uint8_t err,
+    struct bt_gatt_read_params *params, const void *data, uint16_t length) {
+    if (err || data == NULL) {
+        printk("Done reading\n");
+        return BT_GATT_ITER_STOP;
+    }
+    
+    printk("New UUID ------------ \n");
+    const char *byte = data;
+    for (int i = 0; i < length; i++) {
+        printk("%x ", byte[i]);
+        if (i % 10 == 0 && i != 0) {
+            printk("\n");
+        }
+    }
+    printk("\nEnd UUID ---------- \n");
+    return BT_GATT_ITER_CONTINUE;
+}
+
+static struct bt_gatt_read_params read_params = {
+    .func = read_cb,
+    .by_uuid.start_handle = BT_ATT_FIRST_ATTRIBUTE_HANDLE,
+    .by_uuid.end_handle = BT_ATT_LAST_ATTRIBUTE_HANDLE,
+    .by_uuid.uuid = BT_UUID_GATT_PRIMARY  
+};
+
+static void print_connection_status(void) {
+    /* Call bt_gatt_discover(), remember to attach a callback to
+        params->func to print the discovered profiles/services/attributes. */
+    int err = bt_gatt_discover(conn, &discover_params);
+    if (err) {
+        printk("Failed to print status\n");
+    }
+
+    /* UUID 2800 is the primary service we're interested in. */
+    err = bt_gatt_read(conn, &read_params);
+    if(err) {
+        printk("Failed to read GATT services\n");
+    }
 }
 
 static void print_menu(void) {
@@ -173,11 +248,11 @@ static void select(void) {
                 }
             } else {
                 err = bt_enable(NULL);
+                bt_menu.status ^= BT_ENABLED;
                 if (err) {
                     printk("Failed to enable bluetooth\n");
                 } else {
                     printk("Bluetooth enabled\n");
-                    bt_menu.status ^= BT_ENABLED;
                 }
             }
             print_menu();
@@ -208,7 +283,7 @@ static void select(void) {
             /* Connect or disconnect */
             if (bt_menu.status & BT_CONNECTED) {
                 bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-                bt_menu.status ^= BT_CONNECTED; 
+                k_sem_take(&alter_conn, K_FOREVER); // Block until callback releases
                 print_menu();
             } else {
                 sl_enter();
@@ -216,7 +291,11 @@ static void select(void) {
             break;
         case 3:
             /* Print status */
-            printk("Option 3\n");
+            if (bt_menu.status & BT_CONNECTED) {
+                print_connection_status();
+            } else {
+                printk("No active connection\n");
+            }
             break;
         default:
             printk("Unsupported option\n");
@@ -309,8 +388,7 @@ static void sl_select() {
         return;
     }
 
-    printk("Connection established: %s\n", bt_addr_le_str);
-    bt_menu.status ^= BT_CONNECTED; 
+    k_sem_take(&alter_conn, K_FOREVER); /* Block until callback releases */
     bt_menu_enter();
 }
 
@@ -359,26 +437,34 @@ static void device_found(const bt_addr_le_t *addr, int8_t rssi,
 
 /* Bluetooth Connection Callbacks ------------------------------------------ */
 
-static void connected(struct bt_conn *conn, uint8_t err)
+static void connected(struct bt_conn *i_conn, uint8_t err)
 {
 	if (err) {
 		printk("Connection callback: failed to connect\n");
-		bt_conn_unref(conn);
+        k_sem_give(&alter_conn);    /* So we don't brick the input-thread */
+		bt_conn_unref(i_conn);
+        conn = NULL;
 		return;
     }
 	printk("Connection callback: Connected\n");
 	// bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+    bt_menu.status ^= BT_CONNECTED;
+    k_sem_give(&alter_conn);
 }
 
 static void disconnected(struct bt_conn *i_conn, uint8_t reason)
 {
-
-	// printk("Disconnected: %s, reason 0x%02x %s\n", bt_conn_dst_str(conn),
-	//        reason, bt_hci_err_to_str(reason));
-    printk("Disconnected\n");
-    /* Do we need to set conn to NULL? */
+	printk("Disconnected: reason 0x%02x %s\n", reason, 
+        bt_hci_err_to_str(reason));
     bt_conn_unref(i_conn);
     conn = NULL;
+    bt_menu.status ^= BT_CONNECTED;
+    if (reason != BT_HCI_ERR_LOCALHOST_TERM_CONN) {
+        /* Anything other than the central intiatiating the disconnection,
+            is considered an unexpected disconnect. Don't touch the semaphore.*/
+        return;
+    }
+    k_sem_give(&alter_conn);
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {
